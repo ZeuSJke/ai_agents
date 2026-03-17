@@ -1,32 +1,49 @@
-# 🤖 AI Agents
+# AI Agents
 
-CLI-приложение для общения с LLM через [OpenRouter](https://openrouter.ai/).
+Веб-приложение для общения с LLM через [OpenRouter](https://openrouter.ai/).
 
-## Быстрый старт
+**Стек:** FastAPI (backend) + Next.js (frontend) + Material You 3
+
+## Быстрый старт (Docker)
 
 ```bash
-# 1. Установить зависимости
-pip install -r requirements.txt
-
-# 2. Создать .env файл с ключом
+# 1. Создать .env файл с ключом
 cp .env.example .env
 # Откройте .env и вставьте свой ключ OpenRouter
 
-# 3. Запустить
-python main.py
+# 2. Запустить
+docker compose up --build
 ```
 
-## Команды
+Откройте http://localhost:3000
 
-| Команда         | Описание                 |
-|-----------------|--------------------------|
-| `exit` / `quit` | Выход из приложения      |
-| `clear`         | Очистить историю беседы  |
+## Запуск без Docker
 
-## Настройка модели
+### Backend
 
-По умолчанию используется `minimax/minimax-m2.5`. Можно изменить через переменную окружения:
-
-```env
-OPENROUTER_MODEL=minimax/minimax-m2.5
+```bash
+cp .env.example .env
+# Вставьте ключ в .env
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload
 ```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+## Возможности
+
+- Чат с LLM через OpenRouter с поддержкой streaming
+- Раздельные промпты: System Prompt, Assistant Prompt (prefill), User Prompt
+- Управление параметрами генерации:
+  - Temperature, Top P, Top K
+  - Max Tokens, Seed
+  - Frequency Penalty, Presence Penalty
+- Выбор модели (любая модель с OpenRouter)
+- Material You 3 дизайн с поддержкой тёмной темы

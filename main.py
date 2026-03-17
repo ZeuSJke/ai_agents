@@ -1,5 +1,7 @@
 """
-AI Agents — CLI-приложение для общения с LLM через OpenRouter.
+AI Agents — CLI-версия чата с LLM через OpenRouter (устаревшая).
+
+Актуальная версия: backend/ (FastAPI) + frontend/ (Next.js).
 """
 
 import os
