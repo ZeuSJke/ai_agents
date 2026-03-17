@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -v ^d.*.venv)",
+      "Bash(find /c/Users/kbess/Documents/git/ai_agents -maxdepth 2 ! -path */.venv* ! -path */.git* ! -path */__pycache__* -type d)",
+      "Bash(find /c/Users/kbess/Documents/git/ai_agents -iname dockerfile* -o -iname docker-compose* -o -iname *.yaml -o -iname *.yml)"
+    ]
+  }
+}
