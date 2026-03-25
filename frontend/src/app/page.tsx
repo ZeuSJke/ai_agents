@@ -1,215 +1,119 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import Box from "@mui/material/Box";
 import AppBar from "@mui/material/AppBar";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
-import TuneIcon from "@mui/icons-material/Tune";
+import Tooltip from "@mui/material/Tooltip";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import SmartToyOutlined from "@mui/icons-material/SmartToyOutlined";
-import SettingsDrawer, { type LLMParams } from "@/components/SettingsDrawer";
+import SettingsPanel, { DEFAULT_PARAMS } from "@/components/SettingsPanel";
 import ChatArea from "@/components/ChatArea";
 import PromptPanel from "@/components/PromptPanel";
 import ChatInput from "@/components/ChatInput";
+import ChatHistory from "@/components/ChatHistory";
+import { useSessions } from "@/hooks/useSessions";
+import { useChat } from "@/hooks/useChat";
+import type { LLMParams, ChatMessage } from "@/types/chat";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-export interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
-const DEFAULT_PARAMS: LLMParams = {
-  model: "minimax/minimax-m2.5",
-  temperature: null,
-  top_p: null,
-  top_k: null,
-  max_tokens: null,
-  seed: null,
-  frequency_penalty: null,
-  presence_penalty: null,
-};
+// Re-export types for backwards compatibility with components that import from page
+export type { ChatMessage, UsageInfo, RequestMeta } from "@/types/chat";
 
 export default function Home() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [systemPrompt, setSystemPrompt] = useState(
-    "Ты — полезный AI-ассистент. Отвечай кратко и по делу. Поддерживай контекст беседы."
+    "Ты — полезный AI-ассистент. Отвечай кратко и по делу. Поддерживай контекст беседы.",
   );
   const [assistantPrompt, setAssistantPrompt] = useState("");
   const [params, setParams] = useState<LLMParams>(DEFAULT_PARAMS);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [streamingContent, setStreamingContent] = useState("");
-  const abortRef = useRef<AbortController | null>(null);
 
-  const handleSend = useCallback(
-    async (userMessage: string) => {
-      if (!userMessage.trim() || isLoading) return;
+  const { sessions, activeId, persist, select, remove, startNew } = useSessions();
 
-      const newMessages: ChatMessage[] = [
-        ...messages,
-        { role: "user", content: userMessage },
-      ];
-      setMessages(newMessages);
-      setIsLoading(true);
-      setStreamingContent("");
-
-      abortRef.current = new AbortController();
-
-      try {
-        const body = {
-          messages: newMessages,
-          system_prompt: systemPrompt,
-          assistant_prompt: assistantPrompt,
-          stream: true,
-          ...Object.fromEntries(
-            Object.entries(params).filter(([, v]) => v !== null && v !== "")
-          ),
-        };
-
-        const res = await fetch(`${API_URL}/api/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-          signal: abortRef.current.signal,
-        });
-
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.detail || "Ошибка API");
-        }
-
-        const reader = res.body?.getReader();
-        if (!reader) throw new Error("Нет потока ответа");
-
-        const decoder = new TextDecoder();
-        let accumulated = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const text = decoder.decode(value, { stream: true });
-          const lines = text.split("\n");
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6).trim();
-              if (data === "[DONE]") break;
-              try {
-                const parsed = JSON.parse(data);
-                if (parsed.error) throw new Error(parsed.error);
-                if (parsed.content) {
-                  accumulated += parsed.content;
-                  setStreamingContent(accumulated);
-                }
-              } catch {
-                // skip malformed chunks
-              }
-            }
-          }
-        }
-
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: accumulated },
-        ]);
-        setStreamingContent("");
-      } catch (err: any) {
-        if (err.name !== "AbortError") {
-          setMessages((prev) => [
-            ...prev,
-            {
-              role: "assistant",
-              content: `**Ошибка:** ${err.message}`,
-            },
-          ]);
-        }
-        setStreamingContent("");
-      } finally {
-        setIsLoading(false);
-        abortRef.current = null;
-      }
-    },
-    [messages, systemPrompt, assistantPrompt, params, isLoading]
+  const onComplete = useCallback(
+    (msgs: ChatMessage[]) => persist(msgs, systemPrompt, assistantPrompt, params),
+    [persist, systemPrompt, assistantPrompt, params],
   );
 
-  const handleClear = () => {
-    if (abortRef.current) abortRef.current.abort();
-    setMessages([]);
-    setStreamingContent("");
-    setIsLoading(false);
+  const chat = useChat({ systemPrompt, assistantPrompt, params, onComplete });
+
+  const handleSelectSession = (id: string) => {
+    const session = select(id);
+    if (!session) return;
+    chat.loadMessages(session.messages);
+    setSystemPrompt(session.systemPrompt);
+    setAssistantPrompt(session.assistantPrompt);
+    setParams(session.params);
   };
 
-  const handleStop = () => {
-    if (abortRef.current) abortRef.current.abort();
+  const handleNewSession = () => {
+    startNew();
+    chat.clear();
   };
+
+  const handleDeleteSession = (id: string) => {
+    remove(id);
+    if (activeId === id) chat.clear();
+  };
+
+  const handleClear = () => {
+    startNew();
+    chat.clear();
+  };
+
+  const sessionList = sessions.map((s) => ({
+    id: s.id,
+    title: s.title,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  }));
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100vh",
-        bgcolor: "background.default",
-      }}
-    >
-      {/* App Bar */}
-      <AppBar
-        position="static"
-        elevation={0}
-        sx={{
-          bgcolor: "background.paper",
-          color: "text.primary",
-          borderBottom: 1,
-          borderColor: "divider",
-        }}
-      >
-        <Toolbar>
-          <SmartToyOutlined sx={{ mr: 1.5, color: "primary.main" }} />
-          <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 500 }}>
-            AI Agents
-          </Typography>
-          <IconButton onClick={handleClear} title="Очистить историю">
-            <DeleteOutlineIcon />
-          </IconButton>
-          <IconButton onClick={() => setDrawerOpen(true)} title="Параметры">
-            <TuneIcon />
-          </IconButton>
-        </Toolbar>
-      </AppBar>
-
-      {/* Prompt Panel */}
-      <PromptPanel
-        systemPrompt={systemPrompt}
-        assistantPrompt={assistantPrompt}
-        onSystemChange={setSystemPrompt}
-        onAssistantChange={setAssistantPrompt}
+    <Box sx={{ display: "flex", height: "100vh", bgcolor: "background.default" }}>
+      <ChatHistory
+        sessions={sessionList}
+        activeSessionId={activeId}
+        onSelect={handleSelectSession}
+        onNew={handleNewSession}
+        onDelete={handleDeleteSession}
       />
 
-      {/* Chat Area */}
-      <ChatArea
-        messages={messages}
-        streamingContent={streamingContent}
-        isLoading={isLoading}
-      />
+      <Box sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <AppBar
+          position="static"
+          elevation={0}
+          sx={{ bgcolor: "background.paper", color: "text.primary", borderBottom: 1, borderColor: "divider" }}
+        >
+          <Toolbar variant="dense">
+            <SmartToyOutlined sx={{ mr: 1.5, color: "primary.main" }} />
+            <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 500 }}>
+              AI Agents
+            </Typography>
+            <Tooltip title="Сбросить контекст — новые сообщения не будут включать предыдущую историю" arrow>
+              <IconButton onClick={chat.resetContext} color="warning">
+                <RestartAltIcon />
+              </IconButton>
+            </Tooltip>
+            <IconButton onClick={handleClear} title="Новый чат">
+              <DeleteOutlineIcon />
+            </IconButton>
+          </Toolbar>
+        </AppBar>
 
-      {/* Input */}
-      <ChatInput
-        onSend={handleSend}
-        onStop={handleStop}
-        isLoading={isLoading}
-      />
+        <PromptPanel
+          systemPrompt={systemPrompt}
+          assistantPrompt={assistantPrompt}
+          onSystemChange={setSystemPrompt}
+          onAssistantChange={setAssistantPrompt}
+        />
 
-      {/* Settings Drawer */}
-      <SettingsDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        params={params}
-        onParamsChange={setParams}
-      />
+        <ChatArea messages={chat.messages} streamingContent={chat.streamingContent} isLoading={chat.isLoading} />
+
+        <ChatInput onSend={chat.send} onStop={chat.stop} isLoading={chat.isLoading} />
+      </Box>
+
+      <SettingsPanel params={params} onParamsChange={setParams} />
     </Box>
   );
 }
