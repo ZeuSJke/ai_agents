@@ -2,13 +2,14 @@
 
 import { useEffect, useRef } from "react";
 import Box from "@mui/material/Box";
-import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
+import Chip from "@mui/material/Chip";
+import Divider from "@mui/material/Divider";
 import SmartToyOutlined from "@mui/icons-material/SmartToyOutlined";
-import PersonOutlined from "@mui/icons-material/PersonOutlined";
-import ReactMarkdown from "react-markdown";
-import type { ChatMessage } from "@/app/page";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import MessageBubble from "@/components/MessageBubble";
+import type { ChatMessage } from "@/types/chat";
 
 interface ChatAreaProps {
   messages: ChatMessage[];
@@ -16,26 +17,47 @@ interface ChatAreaProps {
   isLoading: boolean;
 }
 
-function MessageBubble({
-  message,
-  isStreaming,
-}: {
-  message: ChatMessage;
-  isStreaming?: boolean;
-}) {
-  const isUser = message.role === "user";
+function ContextResetDivider() {
+  return (
+    <Divider sx={{ my: 1 }}>
+      <Chip
+        icon={<RestartAltIcon sx={{ fontSize: 16 }} />}
+        label="Контекст сброшен"
+        size="small"
+        variant="outlined"
+        color="warning"
+        sx={{ fontSize: "0.75rem", height: 26 }}
+      />
+    </Divider>
+  );
+}
 
+function EmptyState() {
   return (
     <Box
       sx={{
         display: "flex",
-        gap: 1.5,
-        flexDirection: isUser ? "row-reverse" : "row",
-        alignItems: "flex-start",
-        maxWidth: "85%",
-        alignSelf: isUser ? "flex-end" : "flex-start",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        height: "50vh",
+        opacity: 0.4,
+        gap: 2,
+        userSelect: "none",
       }}
     >
+      <SmartToyOutlined sx={{ fontSize: 64 }} />
+      <Typography variant="h6">Начните диалог</Typography>
+      <Typography variant="body2" color="text.secondary">
+        Введите сообщение, чтобы начать общение с AI
+      </Typography>
+    </Box>
+  );
+}
+
+function LoadingIndicator() {
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
       <Box
         sx={{
           width: 36,
@@ -44,152 +66,45 @@ function MessageBubble({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          bgcolor: isUser ? "primary.main" : "secondary.light",
-          color: isUser ? "primary.contrastText" : "secondary.dark",
-          flexShrink: 0,
-          mt: 0.5,
+          bgcolor: "secondary.light",
         }}
       >
-        {isUser ? (
-          <PersonOutlined fontSize="small" />
-        ) : (
-          <SmartToyOutlined fontSize="small" />
-        )}
+        <SmartToyOutlined fontSize="small" sx={{ color: "secondary.dark" }} />
       </Box>
-
-      <Paper
-        elevation={0}
-        sx={{
-          px: 2,
-          py: 1.5,
-          bgcolor: isUser ? "primary.main" : "action.hover",
-          color: isUser ? "primary.contrastText" : "text.primary",
-          borderRadius: isUser
-            ? "20px 20px 4px 20px"
-            : "20px 20px 20px 4px",
-          "& a": {
-            color: isUser ? "inherit" : "primary.main",
-          },
-          wordBreak: "break-word",
-          overflowWrap: "anywhere",
-        }}
-      >
-        {isUser ? (
-          <Typography variant="body1" sx={{ whiteSpace: "pre-wrap" }}>
-            {message.content}
-          </Typography>
-        ) : (
-          <Box className="message-markdown">
-            <ReactMarkdown>{message.content}</ReactMarkdown>
-            {isStreaming && (
-              <Box
-                component="span"
-                sx={{
-                  display: "inline-block",
-                  width: 6,
-                  height: 18,
-                  bgcolor: "text.primary",
-                  ml: 0.5,
-                  animation: "blink 1s step-end infinite",
-                  verticalAlign: "text-bottom",
-                  "@keyframes blink": {
-                    "50%": { opacity: 0 },
-                  },
-                }}
-              />
-            )}
-          </Box>
-        )}
-      </Paper>
+      <CircularProgress size={20} />
     </Box>
   );
 }
 
-export default function ChatArea({
-  messages,
-  streamingContent,
-  isLoading,
-}: ChatAreaProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+export default function ChatArea({ messages, streamingContent, isLoading }: ChatAreaProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages, streamingContent]);
 
-  return (
-    <Box
-      sx={{
-        flex: 1,
-        overflow: "auto",
-        px: { xs: 2, md: 4 },
-        py: 2,
-        minHeight: 0,
-      }}
-    >
-      <Box
-        sx={{
-          maxWidth: 860,
-          mx: "auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 2,
-        }}
-      >
-        {messages.length === 0 && !streamingContent && (
-          <Box
-            sx={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              height: "50vh",
-              opacity: 0.4,
-              gap: 2,
-              userSelect: "none",
-            }}
-          >
-            <SmartToyOutlined sx={{ fontSize: 64 }} />
-            <Typography variant="h6">Начните диалог</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Введите сообщение, чтобы начать общение с AI
-            </Typography>
-          </Box>
-        )}
+  const lastResetIdx = messages.findLastIndex((m) => m.role === "context-reset");
+  const isEmpty = messages.length === 0 && !streamingContent;
 
-        {messages.map((msg, i) => (
-          <MessageBubble key={i} message={msg} />
-        ))}
+  return (
+    <Box ref={scrollRef} sx={{ flex: 1, overflow: "auto", px: { xs: 2, md: 3 }, py: 2, pb: 0, minHeight: 0 }}>
+      <Box sx={{ maxWidth: 860, mx: "auto", display: "flex", flexDirection: "column", gap: 2, pb: 4 }}>
+        {isEmpty && <EmptyState />}
+
+        {messages.map((msg, i) =>
+          msg.role === "context-reset" ? (
+            <ContextResetDivider key={i} />
+          ) : (
+            <MessageBubble key={i} message={msg} dimmed={lastResetIdx >= 0 && i < lastResetIdx} />
+          ),
+        )}
 
         {streamingContent && (
-          <MessageBubble
-            message={{ role: "assistant", content: streamingContent }}
-            isStreaming
-          />
+          <MessageBubble message={{ role: "assistant", content: streamingContent }} isStreaming />
         )}
 
-        {isLoading && !streamingContent && (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-            <Box
-              sx={{
-                width: 36,
-                height: 36,
-                borderRadius: "50%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                bgcolor: "secondary.light",
-              }}
-            >
-              <SmartToyOutlined
-                fontSize="small"
-                sx={{ color: "secondary.dark" }}
-              />
-            </Box>
-            <CircularProgress size={20} />
-          </Box>
-        )}
-
-        <div ref={bottomRef} />
+        {isLoading && !streamingContent && <LoadingIndicator />}
       </Box>
     </Box>
   );
